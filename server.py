@@ -11,6 +11,7 @@ import time
 import queue
 import json
 import os
+from datetime import datetime, date
 
 app = Flask(__name__)
 CORS(app)
@@ -27,6 +28,8 @@ loaded_key = None
 
 # Card names storage file
 CARD_NAMES_FILE = 'card_names.json'
+# Attendance storage file
+ATTENDANCE_FILE = 'attendance.json'
 
 # Card name mapping
 CARD_NAME_MAP = {
@@ -72,6 +75,77 @@ def set_card_name(uid, name):
     card_names = load_card_names()
     card_names[uid] = name
     return save_card_names(card_names)
+
+def load_attendance():
+    """Load attendance data from JSON file"""
+    if os.path.exists(ATTENDANCE_FILE):
+        try:
+            with open(ATTENDANCE_FILE, 'r') as f:
+                return json.load(f)
+        except:
+            return {}
+    return {}
+
+def save_attendance(attendance_data):
+    """Save attendance data to JSON file"""
+    try:
+        with open(ATTENDANCE_FILE, 'w') as f:
+            json.dump(attendance_data, f, indent=2)
+        return True
+    except Exception as e:
+        print(f"Error saving attendance: {e}")
+        return False
+
+def record_sign_in(uid):
+    """Record a sign-in for a card UID today"""
+    if uid is None:
+        return False
+    attendance = load_attendance()
+    today = date.today().isoformat()
+    
+    if today not in attendance:
+        attendance[today] = {}
+    
+    attendance[today][uid] = {
+        "timestamp": datetime.now().isoformat(),
+        "signed_in": True
+    }
+    
+    return save_attendance(attendance)
+
+def has_signed_in_today(uid):
+    """Check if a card UID has signed in today"""
+    if uid is None:
+        return False
+    attendance = load_attendance()
+    today = date.today().isoformat()
+    
+    if today not in attendance:
+        return False
+    
+    return uid in attendance[today] and attendance[today][uid].get("signed_in", False)
+
+def get_attendance_status():
+    """Get attendance status for all registered cards for today"""
+    card_names = load_card_names()
+    attendance = load_attendance()
+    today = date.today().isoformat()
+    
+    status_list = []
+    for uid, name in card_names.items():
+        has_signed_in = today in attendance and uid in attendance[today] and attendance[today][uid].get("signed_in", False)
+        sign_in_time = None
+        if has_signed_in:
+            sign_in_time = attendance[today][uid].get("timestamp")
+        
+        status_list.append({
+            "uid": uid,
+            "name": name,
+            "signedIn": has_signed_in,
+            "signInTime": sign_in_time
+        })
+    
+    return status_list
 
 def get_fresh_connection():
     """Get a fresh connection to the NFC reader"""
@@ -183,6 +257,11 @@ def card_detection_loop():
                     card_name = get_card_name(uid)
                     current_card_uid = uid
                     current_card_info = info
+                    
+                    # Automatically record sign-in if card has a name
+                    if uid and card_name:
+                        record_sign_in(uid)
+                    
                     card_status_queue.put({
                         "status": "card_detected",
                         "uid": uid,
@@ -496,6 +575,37 @@ def get_all_card_names():
     try:
         card_names = load_card_names()
         return jsonify({"success": True, "cardNames": card_names})
+    except Exception as e:
+        return jsonify({"success": False, "error": str(e)}), 500
+
+@app.route('/api/record-sign-in', methods=['POST'])
+def record_sign_in_api():
+    """Record a sign-in for a card"""
+    try:
+        data = request.get_json()
+        uid = data.get('uid')
+        
+        if not uid:
+            return jsonify({"success": False, "error": "UID is required"}), 400
+        
+        if record_sign_in(uid):
+            card_name = get_card_name(uid)
+            return jsonify({
+                "success": True,
+                "message": f"Sign-in recorded for {card_name or uid}",
+                "name": card_name
+            })
+        else:
+            return jsonify({"success": False, "error": "Failed to record sign-in"}), 500
+    except Exception as e:
+        return jsonify({"success": False, "error": str(e)}), 500
+
+@app.route('/api/attendance-status', methods=['GET'])
+def attendance_status_api():
+    """Get attendance status for all registered cards"""
+    try:
+        status_list = get_attendance_status()
+        return jsonify({"success": True, "attendance": status_list})
     except Exception as e:
         return jsonify({"success": False, "error": str(e)}), 500
 

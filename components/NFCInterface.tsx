@@ -363,6 +363,36 @@ export default function NFCInterface() {
         </div>
       )}
 
+      {/* Operation Log */}
+      <div className="bg-white dark:bg-gray-800 rounded-lg shadow-lg p-6">
+        <h2 className="text-2xl font-semibold text-gray-900 dark:text-white mb-4">
+          Operation Log
+        </h2>
+        <div className="max-h-64 overflow-y-auto space-y-1">
+          {logs.length === 0 ? (
+            <p className="text-gray-500 dark:text-gray-400 text-sm">No operations yet</p>
+          ) : (
+            logs.map((log) => (
+              <div
+                key={log.id}
+                className={`text-sm p-2 rounded ${
+                  log.type === 'success'
+                    ? 'bg-green-50 dark:bg-green-900/20 text-green-800 dark:text-green-300'
+                    : log.type === 'error'
+                    ? 'bg-red-50 dark:bg-red-900/20 text-red-800 dark:text-red-300'
+                    : 'bg-blue-50 dark:bg-blue-900/20 text-blue-800 dark:text-blue-300'
+                }`}
+              >
+                <span className="text-xs text-gray-500 dark:text-gray-400">
+                  {log.timestamp.toLocaleTimeString()}
+                </span>{' '}
+                {log.message}
+              </div>
+            ))
+          )}
+        </div>
+      </div>
+
       {/* Operations */}
       <div className="bg-white dark:bg-gray-800 rounded-lg shadow-lg p-6">
         <h2 className="text-2xl font-semibold text-gray-900 dark:text-white mb-4">
@@ -471,36 +501,6 @@ export default function NFCInterface() {
                 ))}
               </div>
             </div>
-          )}
-        </div>
-      </div>
-
-      {/* Operation Log */}
-      <div className="bg-white dark:bg-gray-800 rounded-lg shadow-lg p-6">
-        <h2 className="text-2xl font-semibold text-gray-900 dark:text-white mb-4">
-          Operation Log
-        </h2>
-        <div className="max-h-64 overflow-y-auto space-y-1">
-          {logs.length === 0 ? (
-            <p className="text-gray-500 dark:text-gray-400 text-sm">No operations yet</p>
-          ) : (
-            logs.map((log) => (
-              <div
-                key={log.id}
-                className={`text-sm p-2 rounded ${
-                  log.type === 'success'
-                    ? 'bg-green-50 dark:bg-green-900/20 text-green-800 dark:text-green-300'
-                    : log.type === 'error'
-                    ? 'bg-red-50 dark:bg-red-900/20 text-red-800 dark:text-red-300'
-                    : 'bg-blue-50 dark:bg-blue-900/20 text-blue-800 dark:text-blue-300'
-                }`}
-              >
-                <span className="text-xs text-gray-500 dark:text-gray-400">
-                  {log.timestamp.toLocaleTimeString()}
-                </span>{' '}
-                {log.message}
-              </div>
-            ))
           )}
         </div>
       </div>
