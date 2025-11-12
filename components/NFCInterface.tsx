@@ -20,6 +20,7 @@ interface Status {
   cardName: string | null;
   cardInfo: CardInfo | null;
   detectionActive: boolean;
+  signInMode: boolean;
 }
 
 interface OperationLog {
@@ -38,6 +39,7 @@ export default function NFCInterface() {
   const [sectorData, setSectorData] = useState<any>(null);
   const [cardNameInput, setCardNameInput] = useState('');
   const [showNameInput, setShowNameInput] = useState(false);
+  const [signInMode, setSignInMode] = useState(true);
 
   const addLog = useCallback((type: 'success' | 'error' | 'info', message: string) => {
     const log: OperationLog = {
@@ -92,7 +94,15 @@ export default function NFCInterface() {
       if (data.success && data.update) {
         if (data.update.status === 'card_detected') {
           const nameText = data.update.name ? ` - ${data.update.name}` : '';
-          addLog('success', `Card detected - UID: ${data.update.uid}${nameText}`);
+          if (data.update.action === 'signed_in') {
+            addLog('success', `✓ Signed in: ${data.update.name || data.update.uid}${nameText}`);
+          } else if (data.update.action === 'signed_out') {
+            addLog('success', `✓ Signed out: ${data.update.name || data.update.uid}${nameText}`);
+          } else if (data.update.action === 'sign_out_failed') {
+            addLog('error', `✗ Cannot sign out: ${data.update.name || data.update.uid} (not signed in)`);
+          } else {
+            addLog('info', `Card detected - UID: ${data.update.uid}${nameText}`);
+          }
           fetchStatus();
         } else if (data.update.status === 'card_removed') {
           addLog('info', 'Card removed');
@@ -200,7 +210,31 @@ export default function NFCInterface() {
     } else if (status?.cardUid && !status.cardName) {
       setCardNameInput('');
     }
-  }, [status?.cardUid, status?.cardName]);
+    if (status?.signInMode !== undefined) {
+      setSignInMode(status.signInMode);
+    }
+  }, [status?.cardUid, status?.cardName, status?.signInMode]);
+
+  const toggleMode = async () => {
+    const newMode = !signInMode;
+    try {
+      const response = await fetch(`${API_BASE}/set-mode`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ mode: newMode ? 'sign_in' : 'sign_out' }),
+      });
+      const data = await response.json();
+      if (data.success) {
+        setSignInMode(newMode);
+        addLog('success', `Mode switched to ${newMode ? 'Sign In' : 'Sign Out'}`);
+        fetchStatus();
+      } else {
+        addLog('error', data.error || 'Failed to change mode');
+      }
+    } catch (error: any) {
+      addLog('error', error.message || 'Failed to change mode');
+    }
+  };
 
   return (
     <div className="space-y-6">
@@ -258,6 +292,22 @@ export default function NFCInterface() {
                 Start Detection
               </button>
             )}
+          </div>
+          <div>
+            <p className="text-sm text-gray-600 dark:text-gray-400 mb-2">Mode</p>
+            <button
+              onClick={toggleMode}
+              className={`px-4 py-2 rounded-lg transition-colors font-semibold ${
+                signInMode
+                  ? 'bg-green-500 hover:bg-green-600 text-white'
+                  : 'bg-orange-500 hover:bg-orange-600 text-white'
+              }`}
+            >
+              {signInMode ? '✓ Sign In Mode' : '✓ Sign Out Mode'}
+            </button>
+            <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">
+              {signInMode ? 'Placing card will sign in' : 'Placing card will sign out'}
+            </p>
           </div>
         </div>
       </div>

@@ -25,6 +25,7 @@ card_status_queue = queue.Queue()
 current_card_uid = None
 current_card_info = None
 loaded_key = None
+sign_in_mode = True  # True = sign in mode, False = sign out mode
 
 # Card names storage file
 CARD_NAMES_FILE = 'card_names.json'
@@ -106,10 +107,45 @@ def record_sign_in(uid):
     if today not in attendance:
         attendance[today] = {}
     
-    attendance[today][uid] = {
-        "timestamp": datetime.now().isoformat(),
-        "signed_in": True
-    }
+    # If already signed in today, don't overwrite - just update sign-in time
+    if uid in attendance[today] and attendance[today][uid].get("signed_in", False):
+        # Already signed in, update sign-in time
+        attendance[today][uid]["sign_in_time"] = datetime.now().isoformat()
+    else:
+        # New sign-in
+        attendance[today][uid] = {
+            "sign_in_time": datetime.now().isoformat(),
+            "signed_in": True,
+            "sign_out_time": None,
+            "hours": 0
+        }
+    
+    return save_attendance(attendance)
+
+def record_sign_out(uid):
+    """Record a sign-out for a card UID today and calculate hours"""
+    if uid is None:
+        return False
+    attendance = load_attendance()
+    today = date.today().isoformat()
+    
+    if today not in attendance or uid not in attendance[today]:
+        return False
+    
+    if not attendance[today][uid].get("signed_in", False):
+        return False
+    
+    sign_out_time = datetime.now()
+    sign_in_time_str = attendance[today][uid].get("sign_in_time")
+    
+    if sign_in_time_str:
+        sign_in_time = datetime.fromisoformat(sign_in_time_str)
+        time_diff = sign_out_time - sign_in_time
+        hours = time_diff.total_seconds() / 3600.0  # Convert to hours
+        
+        attendance[today][uid]["sign_out_time"] = sign_out_time.isoformat()
+        attendance[today][uid]["hours"] = round(hours, 2)
+        attendance[today][uid]["signed_in"] = False
     
     return save_attendance(attendance)
 
@@ -135,17 +171,96 @@ def get_attendance_status():
     for uid, name in card_names.items():
         has_signed_in = today in attendance and uid in attendance[today] and attendance[today][uid].get("signed_in", False)
         sign_in_time = None
-        if has_signed_in:
-            sign_in_time = attendance[today][uid].get("timestamp")
+        sign_out_time = None
+        hours = 0
+        
+        if today in attendance and uid in attendance[today]:
+            entry = attendance[today][uid]
+            sign_in_time = entry.get("sign_in_time")
+            sign_out_time = entry.get("sign_out_time")
+            hours = entry.get("hours", 0)
         
         status_list.append({
             "uid": uid,
             "name": name,
             "signedIn": has_signed_in,
-            "signInTime": sign_in_time
+            "signInTime": sign_in_time,
+            "signOutTime": sign_out_time,
+            "hours": hours
         })
     
     return status_list
+
+def get_person_profile(uid):
+    """Get complete profile data for a person including all attendance history"""
+    if uid is None:
+        return None
+    
+    card_names = load_card_names()
+    if uid not in card_names:
+        return None
+    
+    attendance = load_attendance()
+    name = card_names[uid]
+    
+    # Get all attendance records for this person
+    attendance_history = []
+    total_hours = 0
+    days_attended = 0
+    
+    # Get all dates from attendance
+    all_dates = sorted(attendance.keys(), reverse=True)
+    
+    for day in all_dates:
+        if uid in attendance[day]:
+            entry = attendance[day][uid]
+            sign_in_time = entry.get("sign_in_time")
+            sign_out_time = entry.get("sign_out_time")
+            hours = entry.get("hours", 0)
+            signed_in = entry.get("signed_in", False)
+            
+            attended = sign_in_time is not None
+            
+            attendance_history.append({
+                "date": day,
+                "signInTime": sign_in_time,
+                "signOutTime": sign_out_time,
+                "hours": hours,
+                "signedIn": signed_in,
+                "attended": attended
+            })
+            
+            if attended:
+                days_attended += 1
+                total_hours += hours
+        else:
+            # Day exists but person didn't attend
+            attendance_history.append({
+                "date": day,
+                "signInTime": None,
+                "signOutTime": None,
+                "hours": 0,
+                "signedIn": False,
+                "attended": False
+            })
+    
+    # Calculate statistics
+    total_days = len(all_dates)
+    days_missed = total_days - days_attended
+    average_hours = total_hours / days_attended if days_attended > 0 else 0
+    attendance_rate = (days_attended / total_days * 100) if total_days > 0 else 0
+    
+    return {
+        "uid": uid,
+        "name": name,
+        "totalHours": round(total_hours, 2),
+        "daysAttended": days_attended,
+        "daysMissed": days_missed,
+        "totalDays": total_days,
+        "averageHours": round(average_hours, 2),
+        "attendanceRate": round(attendance_rate, 1),
+        "attendanceHistory": attendance_history
+    }
 
 def get_fresh_connection():
     """Get a fresh connection to the NFC reader"""
@@ -258,19 +373,51 @@ def card_detection_loop():
                     current_card_uid = uid
                     current_card_info = info
                     
-                    # Automatically record sign-in if card has a name
+                    # Record sign-in or sign-out based on mode
                     if uid and card_name:
-                        record_sign_in(uid)
-                    
-                    card_status_queue.put({
-                        "status": "card_detected",
-                        "uid": uid,
-                        "name": card_name,
-                        "info": info,
-                        "timestamp": time.time()
-                    })
+                        global sign_in_mode
+                        if sign_in_mode:
+                            # Sign in mode: record sign-in
+                            record_sign_in(uid)
+                            card_status_queue.put({
+                                "status": "card_detected",
+                                "uid": uid,
+                                "name": card_name,
+                                "info": info,
+                                "action": "signed_in",
+                                "timestamp": time.time()
+                            })
+                        else:
+                            # Sign out mode: record sign-out
+                            if record_sign_out(uid):
+                                card_status_queue.put({
+                                    "status": "card_detected",
+                                    "uid": uid,
+                                    "name": card_name,
+                                    "info": info,
+                                    "action": "signed_out",
+                                    "timestamp": time.time()
+                                })
+                            else:
+                                # Not signed in, can't sign out
+                                card_status_queue.put({
+                                    "status": "card_detected",
+                                    "uid": uid,
+                                    "name": card_name,
+                                    "info": info,
+                                    "action": "sign_out_failed",
+                                    "timestamp": time.time()
+                                })
+                    else:
+                        card_status_queue.put({
+                            "status": "card_detected",
+                            "uid": uid,
+                            "name": card_name,
+                            "info": info,
+                            "timestamp": time.time()
+                        })
                 else:
-                    # Card removed
+                    # Card removed - don't auto sign-out anymore, only when explicitly in sign-out mode
                     current_card_uid = None
                     current_card_info = None
                     card_status_queue.put({
@@ -286,7 +433,7 @@ def card_detection_loop():
 @app.route('/api/status', methods=['GET'])
 def get_status():
     """Get current NFC reader and card status"""
-    global nfc_reader, current_card_uid, current_card_info, card_detection_active
+    global nfc_reader, current_card_uid, current_card_info, card_detection_active, sign_in_mode
     
     # Always check if readers are available
     try:
@@ -299,6 +446,7 @@ def get_status():
                 "cardUid": None,
                 "cardInfo": None,
                 "detectionActive": card_detection_active,
+                "signInMode": sign_in_mode,
                 "error": "No readers available"
             })
         
@@ -313,6 +461,7 @@ def get_status():
                     "cardUid": None,
                     "cardInfo": None,
                     "detectionActive": card_detection_active,
+                    "signInMode": sign_in_mode,
                     "error": init_result.get("error", "Failed to initialize reader")
                 })
     except Exception as e:
@@ -323,6 +472,7 @@ def get_status():
             "cardUid": None,
             "cardInfo": None,
             "detectionActive": card_detection_active,
+            "signInMode": sign_in_mode,
             "error": str(e)
         })
     
@@ -608,6 +758,73 @@ def attendance_status_api():
         return jsonify({"success": True, "attendance": status_list})
     except Exception as e:
         return jsonify({"success": False, "error": str(e)}), 500
+
+@app.route('/api/person-profile', methods=['GET'])
+def person_profile_api():
+    """Get profile data for a specific person"""
+    try:
+        uid = request.args.get('uid')
+        if not uid:
+            return jsonify({"success": False, "error": "UID is required"}), 400
+        
+        profile = get_person_profile(uid)
+        if profile is None:
+            return jsonify({"success": False, "error": "Person not found"}), 404
+        
+        return jsonify({"success": True, "profile": profile})
+    except Exception as e:
+        return jsonify({"success": False, "error": str(e)}), 500
+
+@app.route('/api/record-sign-out', methods=['POST'])
+def record_sign_out_api():
+    """Manually record a sign-out for a card"""
+    try:
+        data = request.get_json()
+        uid = data.get('uid')
+        
+        if not uid:
+            return jsonify({"success": False, "error": "UID is required"}), 400
+        
+        if record_sign_out(uid):
+            card_name = get_card_name(uid)
+            return jsonify({
+                "success": True,
+                "message": f"Sign-out recorded for {card_name or uid}",
+                "name": card_name
+            })
+        else:
+            return jsonify({"success": False, "error": "Failed to record sign-out or not signed in"}), 400
+    except Exception as e:
+        return jsonify({"success": False, "error": str(e)}), 500
+
+@app.route('/api/set-mode', methods=['POST'])
+def set_mode():
+    """Set the sign-in/sign-out mode"""
+    global sign_in_mode
+    try:
+        data = request.get_json()
+        mode = data.get('mode')
+        
+        if mode not in ['sign_in', 'sign_out']:
+            return jsonify({"success": False, "error": "Mode must be 'sign_in' or 'sign_out'"}), 400
+        
+        sign_in_mode = (mode == 'sign_in')
+        return jsonify({
+            "success": True,
+            "message": f"Mode set to {'Sign In' if sign_in_mode else 'Sign Out'}",
+            "mode": "sign_in" if sign_in_mode else "sign_out"
+        })
+    except Exception as e:
+        return jsonify({"success": False, "error": str(e)}), 500
+
+@app.route('/api/get-mode', methods=['GET'])
+def get_mode():
+    """Get the current sign-in/sign-out mode"""
+    global sign_in_mode
+    return jsonify({
+        "success": True,
+        "mode": "sign_in" if sign_in_mode else "sign_out"
+    })
 
 if __name__ == '__main__':
     # Initialize reader on startup
