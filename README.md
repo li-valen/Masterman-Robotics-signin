@@ -50,6 +50,13 @@ npm run dev
 
 The web interface will be available at `http://localhost:3000`
 
+### Using a local `.env` file
+
+Instead of exporting environment variables each time, you can create a `.env` file in the project root and the
+backend will load it automatically (the project uses `python-dotenv`). A `.env.example` and a starter `.env` are
+included — fill in your `REMOTE_SAVE_URL`, `REMOTE_SAVE_TOKEN`, or `FRONTEND_ORIGINS` as needed. Do NOT commit `.env`.
+
+
 ### Configuring the API base URL
 
 The frontend talks to the backend through the `NEXT_PUBLIC_API_URL` environment variable. By default it falls back to `http://localhost:5001/api`, but you can override it:

@@ -12,6 +12,11 @@ import queue
 import json
 import os
 from datetime import datetime, date
+from dotenv import load_dotenv
+
+# Load environment variables from .env (if present). This allows using a local
+# `.env` file instead of exporting env vars manually.
+load_dotenv()
 import requests
 
 # Note: we previously supported ngrok via pyngrok. That was removed in favor of
