@@ -67,19 +67,35 @@ export default function AttendancePage() {
           }
 
           const entries: AttendanceEntry[] = [];
+          // Build a merged set of UIDs from today's attendance and known cardNames
+          const uids = new Set<string>();
           if (dayKey) {
-            const dayObj = attendanceByDate[dayKey];
+            const dayObj = attendanceByDate[dayKey] || {};
             for (const uid of Object.keys(dayObj)) {
-              const e = dayObj[uid];
-              entries.push({
-                uid,
-                name: cardNamesMap[uid] || uid,
-                signedIn: !!e.signed_in,
-                signInTime: e.sign_in_time || null,
-                signOutTime: e.sign_out_time || null,
-                hours: e.hours || 0
-              });
+              uids.add(uid);
             }
+          }
+          // Include all registered card UIDs (so UI shows the full roster with names)
+          for (const uid of Object.keys(cardNamesMap)) {
+            uids.add(uid);
+          }
+
+          // If we still have no UIDs, fall back to whatever day's keys exist
+          if (uids.size === 0 && dayKey && attendanceByDate[dayKey]) {
+            for (const uid of Object.keys(attendanceByDate[dayKey])) uids.add(uid);
+          }
+
+          for (const uid of Array.from(uids)) {
+            const dayObj = dayKey ? (attendanceByDate[dayKey] || {}) : {};
+            const e = dayObj[uid] || { signed_in: false, sign_in_time: null, sign_out_time: null, hours: 0 };
+            entries.push({
+              uid,
+              name: cardNamesMap[uid] || uid,
+              signedIn: !!e.signed_in,
+              signInTime: e.sign_in_time || null,
+              signOutTime: e.sign_out_time || null,
+              hours: e.hours || 0
+            });
           }
 
           // Sort by name (which is uid here)
