@@ -47,6 +47,7 @@ export default function AttendancePage() {
           // `data.attendance` is the full attendance.json object mapping dates -> uid -> entry
           const today = new Date().toISOString().slice(0, 10);
           const attendanceByDate = data.attendance;
+          const cardNamesMap: Record<string, string> = data.cardNames || {};
           // Prefer today's data, else fall back to the most recent date available
           let dayKey: string | null = today;
           if (!attendanceByDate[dayKey]) {
@@ -61,7 +62,7 @@ export default function AttendancePage() {
               const e = dayObj[uid];
               entries.push({
                 uid,
-                name: uid, // no card_names available in gist; show UID as name
+                name: cardNamesMap[uid] || uid,
                 signedIn: !!e.signed_in,
                 signInTime: e.sign_in_time || null,
                 signOutTime: e.sign_out_time || null,
