@@ -7,11 +7,8 @@ import { NextResponse } from 'next/server'
 
 export async function GET() {
   try {
-    const gistId = process.env.GIST_ID
+    let gistId = process.env.GIST_ID
     const githubToken = process.env.GITHUB_TOKEN
-    if (!gistId) {
-      return NextResponse.json({ success: false, error: 'GIST_ID not configured' }, { status: 400 })
-    }
     if (!githubToken) {
       return NextResponse.json({ success: false, error: 'GITHUB_TOKEN not configured' }, { status: 500 })
     }
@@ -19,6 +16,26 @@ export async function GET() {
     const headers: Record<string,string> = {
       'Authorization': `token ${githubToken}`,
       'Accept': 'application/vnd.github+json'
+    }
+
+    // If GIST_ID not set, try to find a gist belonging to the authenticated user
+    // that contains `attendance.json` (created by the receiver endpoint).
+    if (!gistId) {
+      const listResp = await fetch('https://api.github.com/gists', { headers })
+      if (!listResp.ok) {
+        const txt = await listResp.text()
+        return NextResponse.json({ success: false, error: `Failed to list gists: ${txt}` }, { status: 502 })
+      }
+      const gists = await listResp.json()
+      // Find first gist that contains attendance.json or has our description
+      const found = gists.find((g: any) => {
+        if (!g.files) return false
+        if (g.files['attendance.json']) return true
+        if (typeof g.description === 'string' && g.description.includes('Attendance backup')) return true
+        return false
+      })
+      if (found) gistId = found.id
+      else return NextResponse.json({ success: false, error: 'No gist with attendance.json found' }, { status: 404 })
     }
 
     const resp = await fetch(`https://api.github.com/gists/${gistId}`, { headers })

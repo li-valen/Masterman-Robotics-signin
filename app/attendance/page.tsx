@@ -3,7 +3,7 @@
 import { useEffect, useState } from 'react';
 import Link from 'next/link';
 
-const API_BASE = 'http://localhost:5001/api';
+const API_BASE = typeof window !== 'undefined' && (process.env.NEXT_PUBLIC_API_URL || '').replace(/\/+$/, '') || 'http://localhost:5001/api';
 
 interface AttendanceEntry {
   uid: string;
@@ -21,15 +21,60 @@ export default function AttendancePage() {
 
   const fetchAttendance = async () => {
     try {
-      const response = await fetch(`${API_BASE}/attendance-status`);
-      const data = await response.json();
-      if (data.success) {
-        // Sort by name alphabetically
-        const sorted = data.attendance.sort((a: AttendanceEntry, b: AttendanceEntry) => 
-          a.name.localeCompare(b.name)
-        );
-        setAttendance(sorted);
-        setLastUpdate(new Date());
+      // If running on localhost use the local backend attendance-status endpoint.
+      // Otherwise (deployed) try the serverless `fetch-attendance` endpoint which
+      // reads the persisted gist backup.
+      const isLocal = typeof window !== 'undefined' && (
+        window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1'
+      );
+
+      if (isLocal) {
+        const response = await fetch(`${API_BASE}/attendance-status`);
+        const data = await response.json();
+        if (data.success) {
+          // Sort by name alphabetically
+          const sorted = data.attendance.sort((a: AttendanceEntry, b: AttendanceEntry) =>
+            a.name.localeCompare(b.name)
+          );
+          setAttendance(sorted);
+          setLastUpdate(new Date());
+        }
+      } else {
+        // Deployed: fetch persisted attendance from Vercel
+        const resp = await fetch('/api/fetch-attendance');
+        const data = await resp.json();
+        if (data.success && data.attendance) {
+          // `data.attendance` is the full attendance.json object mapping dates -> uid -> entry
+          const today = new Date().toISOString().slice(0, 10);
+          const attendanceByDate = data.attendance;
+          // Prefer today's data, else fall back to the most recent date available
+          let dayKey: string | null = today;
+          if (!attendanceByDate[dayKey]) {
+            const keys = Object.keys(attendanceByDate).sort().reverse();
+            dayKey = keys.length ? keys[0] : null;
+          }
+
+          const entries: AttendanceEntry[] = [];
+          if (dayKey) {
+            const dayObj = attendanceByDate[dayKey];
+            for (const uid of Object.keys(dayObj)) {
+              const e = dayObj[uid];
+              entries.push({
+                uid,
+                name: uid, // no card_names available in gist; show UID as name
+                signedIn: !!e.signed_in,
+                signInTime: e.sign_in_time || null,
+                signOutTime: e.sign_out_time || null,
+                hours: e.hours || 0
+              });
+            }
+          }
+
+          // Sort by name (which is uid here)
+          entries.sort((a, b) => a.name.localeCompare(b.name));
+          setAttendance(entries);
+          setLastUpdate(new Date());
+        }
       }
     } catch (error) {
       console.error('Error fetching attendance:', error);
