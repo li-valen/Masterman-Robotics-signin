@@ -385,6 +385,36 @@
       "signed_in": true,
       "sign_out_time": null,
       "hours": 0
+    },
+    "E0 4D E5 0F": {
+      "sign_in_time": "2025-11-17T16:53:50.925019",
+      "signed_in": true,
+      "sign_out_time": null,
+      "hours": 0
+    },
+    "33 B5 A6 D4": {
+      "sign_in_time": "2025-11-17T16:57:18.093675",
+      "signed_in": true,
+      "sign_out_time": null,
+      "hours": 0
+    },
+    "F7 E6 FE E9": {
+      "sign_in_time": "2025-11-17T16:57:19.801719",
+      "signed_in": true,
+      "sign_out_time": null,
+      "hours": 0
+    },
+    "CA B8 DC 5C": {
+      "sign_in_time": "2025-11-17T16:57:49.646826",
+      "signed_in": true,
+      "sign_out_time": null,
+      "hours": 0
+    },
+    "80 8D 05 20": {
+      "sign_in_time": "2025-11-17T16:58:12.455410",
+      "signed_in": true,
+      "sign_out_time": null,
+      "hours": 0
     }
   }
 }

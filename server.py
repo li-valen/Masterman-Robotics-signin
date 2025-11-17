@@ -221,6 +221,42 @@ def has_signed_in_today(uid):
     
     if today not in attendance:
         return False
+
+
+    def periodic_remote_sync(interval_minutes: int = 10):
+        """Start a background thread that pushes the full attendance and card names to the remote endpoint every `interval_minutes` minutes.
+
+        This uses the internal synchronous `_push_attendance_to_remote` helper inside the thread to avoid creating too many short-lived threads.
+        """
+        def _loop():
+            print(f"Starting periodic remote sync every {interval_minutes} minute(s)")
+            while True:
+                try:
+                    attendance = load_attendance()
+                    payload = {"attendance": attendance, "card_names": load_card_names()}
+                    _push_attendance_to_remote(payload)
+                except Exception as e:
+                    print(f"Periodic remote sync error: {e}")
+                time.sleep(interval_minutes * 60)
+
+        t = threading.Thread(target=_loop, daemon=True)
+        t.start()
+        return t
+
+
+    @app.route('/api/trigger-remote-sync', methods=['POST'])
+    def trigger_remote_sync():
+        """Manually trigger an immediate push of the current attendance and card names to the configured remote endpoint.
+
+        Returns JSON indicating whether the trigger was started. This does not wait for the remote call to finish.
+        """
+        try:
+            attendance = load_attendance()
+            payload = {"attendance": attendance, "card_names": load_card_names()}
+            push_attendance_to_remote_async(payload)
+            return jsonify({"success": True, "message": "Triggered remote sync"})
+        except Exception as e:
+            return jsonify({"success": False, "error": str(e)}), 500
     
     return uid in attendance[today] and attendance[today][uid].get("signed_in", False)
 
@@ -915,6 +951,14 @@ def get_mode():
 if __name__ == '__main__':
     # Initialize reader on startup
     init_nfc_reader()
+    # Optionally start periodic remote sync if REMOTE_SYNC_INTERVAL_MIN is set
+    try:
+        interval_min = int(os.environ.get('REMOTE_SYNC_INTERVAL_MIN', '0') or '0')
+        if interval_min > 0:
+            periodic_remote_sync(interval_min)
+    except Exception:
+        # ignore invalid env value
+        pass
     # For local/public exposure, prefer Cloudflare Tunnel (cloudflared).
     # To run a quick ephemeral tunnel:
     #   cloudflared tunnel --url http://localhost:5001
