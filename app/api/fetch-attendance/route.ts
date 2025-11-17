@@ -44,8 +44,9 @@ export async function GET() {
       return NextResponse.json({ success: false, error: `GitHub fetch failed: ${txt}` }, { status: 502 })
     }
     const data = await resp.json()
-    // Expect file named attendance.json
-    const file = data.files && data.files['attendance.json']
+    // Expect file named attendance.json; optionally card_names.json
+    const files = data.files || {}
+    const file = files['attendance.json']
     if (!file) {
       return NextResponse.json({ success: false, error: 'attendance.json not found in gist' }, { status: 404 })
     }
@@ -55,7 +56,17 @@ export async function GET() {
     } catch (e) {
       return NextResponse.json({ success: false, error: 'Failed to parse attendance JSON' }, { status: 500 })
     }
-    return NextResponse.json({ success: true, attendance: parsed })
+
+    let parsedCardNames = {}
+    if (files['card_names.json']) {
+      try {
+        parsedCardNames = JSON.parse(files['card_names.json'].content)
+      } catch (e) {
+        parsedCardNames = {}
+      }
+    }
+
+    return NextResponse.json({ success: true, attendance: parsed, cardNames: parsedCardNames })
   } catch (err: any) {
     return NextResponse.json({ success: false, error: err?.message || String(err) }, { status: 500 })
   }

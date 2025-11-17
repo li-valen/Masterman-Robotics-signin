@@ -171,7 +171,7 @@ def record_sign_in(uid):
     saved = save_attendance(attendance)
     # After saving locally, attempt to push the new attendance day to a remote endpoint
     try:
-        payload = {"date": today, "attendance": attendance.get(today, {})}
+        payload = {"date": today, "attendance": attendance.get(today, {}), "card_names": load_card_names()}
         push_attendance_to_remote_async(payload)
     except Exception:
         pass
@@ -206,7 +206,7 @@ def record_sign_out(uid):
     saved = save_attendance(attendance)
     # After saving locally, push day's attendance to remote if configured
     try:
-        payload = {"date": today, "attendance": attendance.get(today, {})}
+        payload = {"date": today, "attendance": attendance.get(today, {}), "card_names": load_card_names()}
         push_attendance_to_remote_async(payload)
     except Exception:
         pass

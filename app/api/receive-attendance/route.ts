@@ -24,6 +24,9 @@ export async function POST(request: Request) {
 
     const payload = await request.json()
 
+    // If the incoming payload includes card name mappings, prepare that file content
+    const cardNamesContent = payload?.card_names ? JSON.stringify(payload.card_names, null, 2) : null
+
     const githubToken = process.env.GITHUB_TOKEN
     if (!githubToken) {
       return NextResponse.json({ success: false, error: 'GITHUB_TOKEN not configured' }, { status: 500 })
@@ -39,11 +42,14 @@ export async function POST(request: Request) {
     }
 
     if (gistId) {
-      // Update existing gist
+      // Update existing gist. Include card_names.json if provided in the payload.
+      const files: any = { 'attendance.json': { content } }
+      if (cardNamesContent) files['card_names.json'] = { content: cardNamesContent }
+
       const resp = await fetch(`https://api.github.com/gists/${gistId}`, {
         method: 'PATCH',
         headers,
-        body: JSON.stringify({ files: { 'attendance.json': { content } } })
+        body: JSON.stringify({ files })
       })
       if (!resp.ok) {
         const txt = await resp.text()
@@ -60,7 +66,7 @@ export async function POST(request: Request) {
       body: JSON.stringify({
         public: false,
         description: 'Attendance backup from NFC reader',
-        files: { 'attendance.json': { content } }
+        files: Object.assign({ 'attendance.json': { content } }, cardNamesContent ? { 'card_names.json': { content: cardNamesContent } } : {})
       })
     })
     if (!createResp.ok) {
