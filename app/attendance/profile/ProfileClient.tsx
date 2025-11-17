@@ -45,6 +45,76 @@ export default function ProfileClient() {
 
     const fetchProfile = async () => {
       try {
+        // If running against the deployed app, there may be no server-side
+        // `person-profile` endpoint. In that case, fetch the persisted gist
+        // from `/api/fetch-attendance` and compute the profile client-side.
+        if (API_BASE === '/api') {
+          const resp = await fetch('/api/fetch-attendance');
+          const data = await resp.json();
+          if (!data.success) {
+            console.error('fetch-attendance failed', data);
+            return;
+          }
+
+          // Normalize attendance shape (handle nested attendance.card_names)
+          let attendanceByDate: Record<string, any> = data.attendance as any;
+          let cardNamesMap: Record<string, string> = (data as any).cardNames || {};
+          if (attendanceByDate && attendanceByDate.attendance) {
+            const nested = attendanceByDate;
+            attendanceByDate = nested.attendance || {};
+            const nestedCardNames = nested.card_names || nested.cardNames || {};
+            const top = (data as any).cardNames || {};
+            cardNamesMap = Object.keys(top).length > 0 ? top : nestedCardNames;
+          }
+
+          // Build profile for uid
+          const dates = Object.keys(attendanceByDate).sort();
+          const attendanceHistory: any[] = dates.map((d) => {
+            const day = attendanceByDate[d] || {};
+            const e = day[uid];
+            if (e) {
+              return {
+                date: d,
+                signInTime: e.sign_in_time || null,
+                signOutTime: e.sign_out_time || null,
+                hours: e.hours || 0,
+                signedIn: !!e.signed_in,
+                attended: !!e.signed_in || (e.sign_out_time != null)
+              };
+            }
+            return {
+              date: d,
+              signInTime: null,
+              signOutTime: null,
+              hours: 0,
+              signedIn: false,
+              attended: false
+            };
+          });
+
+          const totalDays = attendanceHistory.length;
+          const daysAttended = attendanceHistory.filter((x) => x.attended).length;
+          const totalHours = attendanceHistory.reduce((s, x) => s + (x.hours || 0), 0);
+          const averageHours = totalDays > 0 ? totalHours / totalDays : 0;
+          const attendanceRate = totalDays > 0 ? (daysAttended / totalDays) * 100 : 0;
+
+          const profileObj: Profile = {
+            uid,
+            name: cardNamesMap[uid] || uid,
+            totalHours: totalHours,
+            daysAttended: daysAttended,
+            daysMissed: totalDays - daysAttended,
+            totalDays: totalDays,
+            averageHours: averageHours,
+            attendanceRate: attendanceRate,
+            attendanceHistory: attendanceHistory
+          };
+
+          setProfile(profileObj);
+          return;
+        }
+
+        // Fallback: call the local backend person-profile endpoint
         const response = await fetch(`${API_BASE}/person-profile?uid=${encodeURIComponent(uid)}`);
         const data = await response.json();
         if (data.success) {
