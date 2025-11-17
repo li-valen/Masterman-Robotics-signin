@@ -44,10 +44,21 @@ export default function AttendancePage() {
         const resp = await fetch('/api/fetch-attendance');
         const data = await resp.json();
         if (data.success && data.attendance) {
-          // `data.attendance` is the full attendance.json object mapping dates -> uid -> entry
+          // `data.attendance` may be either the attendance object
+          // or an object containing both `attendance` and `card_names` (deployed older shape).
           const today = new Date().toISOString().slice(0, 10);
-          const attendanceByDate = data.attendance;
-          const cardNamesMap: Record<string, string> = data.cardNames || {};
+          let attendanceByDate = data.attendance as any;
+          // If endpoint returned { attendance: { attendance: {...}, card_names: {...} } }
+          if (attendanceByDate && attendanceByDate.attendance) {
+            // unwrap nested attendance
+            const nested = attendanceByDate;
+            attendanceByDate = nested.attendance;
+            // prefer top-level `data.cardNames` if present, else use nested `card_names`
+            const cardNamesFromNested = nested.card_names || nested.cardNames || {};
+            // Merge into a normalized `cardNames` on `data` for compatibility below
+            (data as any).cardNames = (data as any).cardNames || cardNamesFromNested;
+          }
+          const cardNamesMap: Record<string, string> = (data as any).cardNames || {};
           // Prefer today's data, else fall back to the most recent date available
           let dayKey: string | null = today;
           if (!attendanceByDate[dayKey]) {
