@@ -12,9 +12,23 @@ import queue
 import json
 import os
 from datetime import datetime, date
+import requests
+
+# Note: we previously supported ngrok via pyngrok. That was removed in favor of
+# Cloudflare Tunnel (`cloudflared`) for stable, free hostnames without port
+# forwarding. To expose the local server use `cloudflared tunnel --url http://localhost:5001`
+# or create a named Cloudflare Tunnel and route DNS (see `README.md` and `scripts/`).
 
 app = Flask(__name__)
-CORS(app)
+# Configure CORS origins via environment variable `FRONTEND_ORIGINS`.
+# If not provided, allow all origins (same as before).
+frontend_origins = os.environ.get('FRONTEND_ORIGINS')
+if frontend_origins:
+    # comma-separated list of origins
+    origins = [o.strip() for o in frontend_origins.split(',') if o.strip()]
+    CORS(app, origins=origins)
+else:
+    CORS(app)
 
 # Global state
 nfc_reader = None
@@ -97,6 +111,35 @@ def save_attendance(attendance_data):
         print(f"Error saving attendance: {e}")
         return False
 
+
+def _push_attendance_to_remote(payload: dict):
+    """Sends attendance payload to remote endpoint if configured.
+
+    This is synchronous and meant to be called inside a thread.
+    """
+    remote_url = os.environ.get('REMOTE_SAVE_URL')
+    if not remote_url:
+        return
+    headers = {'Content-Type': 'application/json'}
+    token = os.environ.get('REMOTE_SAVE_TOKEN')
+    if token:
+        headers['Authorization'] = f'Bearer {token}'
+    try:
+        resp = requests.post(remote_url, json=payload, headers=headers, timeout=10)
+        if resp.status_code >= 400:
+            print(f"Remote save failed ({resp.status_code}): {resp.text}")
+    except Exception as e:
+        print(f"Error pushing attendance to remote: {e}")
+
+
+def push_attendance_to_remote_async(payload: dict):
+    """Fire-and-forget push to remote endpoint."""
+    try:
+        t = threading.Thread(target=_push_attendance_to_remote, args=(payload,), daemon=True)
+        t.start()
+    except Exception as e:
+        print(f"Failed to start remote push thread: {e}")
+
 def record_sign_in(uid):
     """Record a sign-in for a card UID today"""
     if uid is None:
@@ -120,7 +163,15 @@ def record_sign_in(uid):
             "hours": 0
         }
     
-    return save_attendance(attendance)
+    saved = save_attendance(attendance)
+    # After saving locally, attempt to push the new attendance day to a remote endpoint
+    try:
+        payload = {"date": today, "attendance": attendance.get(today, {})}
+        push_attendance_to_remote_async(payload)
+    except Exception:
+        pass
+    return saved
+
 
 def record_sign_out(uid):
     """Record a sign-out for a card UID today and calculate hours"""
@@ -147,7 +198,14 @@ def record_sign_out(uid):
         attendance[today][uid]["hours"] = round(hours, 2)
         attendance[today][uid]["signed_in"] = False
     
-    return save_attendance(attendance)
+    saved = save_attendance(attendance)
+    # After saving locally, push day's attendance to remote if configured
+    try:
+        payload = {"date": today, "attendance": attendance.get(today, {})}
+        push_attendance_to_remote_async(payload)
+    except Exception:
+        pass
+    return saved
 
 def has_signed_in_today(uid):
     """Check if a card UID has signed in today"""
@@ -852,5 +910,11 @@ def get_mode():
 if __name__ == '__main__':
     # Initialize reader on startup
     init_nfc_reader()
+    # For local/public exposure, prefer Cloudflare Tunnel (cloudflared).
+    # To run a quick ephemeral tunnel:
+    #   cloudflared tunnel --url http://localhost:5001
+    # Or create a named tunnel and route DNS (see `scripts/cloudflared_setup.sh`).
+
+    # Start Flask app
     app.run(host='0.0.0.0', port=5001, debug=True)
 

@@ -2,7 +2,11 @@
 
 import { useEffect, useState, useCallback } from 'react';
 
-const API_BASE = process.env.NEXT_PUBLIC_API_URL ||'http://localhost:5001/api';
+// Normalize NEXT_PUBLIC_API_URL so it can be provided with or without a trailing `/api`.
+const _NEXT_PUBLIC = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5001';
+const API_BASE = _NEXT_PUBLIC.endsWith('/api')
+  ? _NEXT_PUBLIC
+  : _NEXT_PUBLIC.replace(/\/+$/, '') + '/api';
 
 interface CardInfo {
   cardName: string;
