@@ -4,7 +4,11 @@ import { useEffect, useState } from 'react';
 import Link from 'next/link';
 import { useSearchParams } from 'next/navigation';
 
-const API_BASE = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5001/api';
+// Use local backend when developing locally; otherwise use the serverless relative API path
+const LOCAL_API = 'http://localhost:5001/api';
+const API_BASE = (typeof window !== 'undefined' && (
+  window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1'
+)) ? (process.env.NEXT_PUBLIC_API_URL || LOCAL_API) : '/api';
 
 interface AttendanceDay {
   date: string;

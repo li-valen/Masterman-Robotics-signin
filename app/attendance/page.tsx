@@ -53,10 +53,12 @@ export default function AttendancePage() {
             // unwrap nested attendance
             const nested = attendanceByDate;
             attendanceByDate = nested.attendance;
-            // prefer top-level `data.cardNames` if present, else use nested `card_names`
+            // prefer top-level `data.cardNames` if present and non-empty,
+            // otherwise use nested `card_names` (handles deployed variations)
             const cardNamesFromNested = nested.card_names || nested.cardNames || {};
-            // Merge into a normalized `cardNames` on `data` for compatibility below
-            (data as any).cardNames = (data as any).cardNames || cardNamesFromNested;
+            const currentTopLevel = (data as any).cardNames || {};
+            const hasTopLevel = Object.keys(currentTopLevel).length > 0;
+            (data as any).cardNames = hasTopLevel ? currentTopLevel : cardNamesFromNested;
           }
           const cardNamesMap: Record<string, string> = (data as any).cardNames || {};
           // Prefer today's data, else fall back to the most recent date available
