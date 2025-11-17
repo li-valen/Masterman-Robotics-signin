@@ -66,7 +66,10 @@ export async function GET() {
       }
     }
 
-    return NextResponse.json({ success: true, attendance: parsed, cardNames: parsedCardNames })
+    // Also return gist metadata so clients can see the remote `updated_at` and gist id
+    const gistMeta = { id: data.id, updatedAt: data.updated_at }
+
+    return NextResponse.json({ success: true, attendance: parsed, cardNames: parsedCardNames, gist: gistMeta })
   } catch (err: any) {
     return NextResponse.json({ success: false, error: err?.message || String(err) }, { status: 500 })
   }
