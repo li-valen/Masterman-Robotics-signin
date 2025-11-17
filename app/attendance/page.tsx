@@ -18,6 +18,7 @@ export default function AttendancePage() {
   const [attendance, setAttendance] = useState<AttendanceEntry[]>([]);
   const [loading, setLoading] = useState(true);
   const [lastUpdate, setLastUpdate] = useState<Date>(new Date());
+  const [remoteUpdatedAt, setRemoteUpdatedAt] = useState<string | null>(null);
 
   const fetchAttendance = async () => {
     try {
@@ -104,6 +105,9 @@ export default function AttendancePage() {
           entries.sort((a, b) => a.name.localeCompare(b.name));
           setAttendance(entries);
           setLastUpdate(new Date());
+          // capture gist updated time if provided by the fetch endpoint
+          const gossip = (data as any).gist;
+          if (gossip && gossip.updatedAt) setRemoteUpdatedAt(gossip.updatedAt);
         }
       }
     } catch (error) {
@@ -134,6 +138,9 @@ export default function AttendancePage() {
             </h1>
             <p className="text-gray-600 dark:text-gray-400">
               {lastUpdate.toLocaleTimeString()} - {lastUpdate.toLocaleDateString()}
+              {remoteUpdatedAt && (
+                <span className="ml-4 text-sm text-gray-500">Remote: {new Date(remoteUpdatedAt).toLocaleString()}</span>
+              )}
             </p>
           </div>
           <Link
