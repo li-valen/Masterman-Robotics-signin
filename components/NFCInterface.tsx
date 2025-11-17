@@ -108,6 +108,10 @@ export default function NFCInterface() {
           addLog('info', 'Card removed');
           fetchStatus();
         }
+        if (data.update.status === 'card_read_failed') {
+          addLog('error', 'Card detected but UID read failed. Retrying...');
+          fetchStatus();
+        }
       }
     } catch (error) {
       // Silent fail for polling

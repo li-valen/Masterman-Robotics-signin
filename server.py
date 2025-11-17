@@ -348,6 +348,19 @@ def get_card_info():
     except Exception as e:
         return None
 
+def read_card_with_retry(max_attempts=3, delay=0.1):
+    """Attempt to read the card UID (and info) with retries to avoid transient failures."""
+    uid = None
+    info = None
+    for attempt in range(max_attempts):
+        uid = get_card_uid()
+        if uid:
+            info = get_card_info()
+            break
+        time.sleep(delay)
+    return uid, info
+
+
 def card_detection_loop():
     """Background thread that continuously checks for card presence"""
     global card_detection_active, current_card_uid, current_card_info, card_status_queue, nfc_reader
@@ -367,11 +380,21 @@ def card_detection_loop():
                 
                 if card_present:
                     # Card detected
-                    uid = get_card_uid()
-                    info = get_card_info()
+                    uid, info = read_card_with_retry()
                     card_name = get_card_name(uid)
                     current_card_uid = uid
                     current_card_info = info
+                    
+                    if not uid:
+                        # Failed to read UID; reset state so we retry on next loop iteration
+                        current_card_uid = None
+                        current_card_info = None
+                        last_card_state = False
+                        card_status_queue.put({
+                            "status": "card_read_failed",
+                            "timestamp": time.time()
+                        })
+                        continue
                     
                     # Record sign-in or sign-out based on mode
                     if uid and card_name:
