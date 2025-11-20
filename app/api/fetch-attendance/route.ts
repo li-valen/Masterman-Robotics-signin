@@ -22,8 +22,9 @@ export async function GET() {
   async function readFromRepo() {
     try {
       const repoRoot = process.cwd()
-      const attendancePath = path.join(repoRoot, 'attendance.json')
-      const cardNamesPath = path.join(repoRoot, 'card_names.json')
+      // prefer public/ where Vercel will serve committed static files
+      const attendancePath = path.join(repoRoot, 'public', 'attendance.json')
+      const cardNamesPath = path.join(repoRoot, 'public', 'card_names.json')
 
       const data = await fs.readFile(attendancePath, 'utf8')
       const parsed = JSON.parse(data)
