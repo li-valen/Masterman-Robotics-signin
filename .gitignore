@@ -33,3 +33,9 @@ npm-debug.log*
 yarn-debug.log*
 yarn-error.log*
 
+# Ensure attendance files are tracked when intentionally committed/pushed
+!attendance.json
+!card_names.json
+!public/attendance.json
+!public/card_names.json
+
