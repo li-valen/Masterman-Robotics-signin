@@ -294,13 +294,14 @@ def get_person_profile(uid):
     """Get complete profile data for a person including all attendance history"""
     if uid is None:
         return None
-    
+
     card_names = load_card_names()
-    if uid not in card_names:
-        return None
-    
+    # If the UID isn't in saved card names, still build a profile using the
+    # UID as a fallback name. Previously we returned `None` which caused the
+    # UI to show "Profile not found" for recently-seen cards that haven't
+    # yet been persisted to `card_names.json`.
     attendance = load_attendance()
-    name = card_names[uid]
+    name = card_names.get(uid, uid)
     
     # Get all attendance records for this person
     attendance_history = []
