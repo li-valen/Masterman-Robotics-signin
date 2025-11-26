@@ -590,9 +590,9 @@
     },
     "30 88 3C 20": {
       "sign_in_time": "2025-11-26T12:03:12.776427",
-      "signed_in": true,
-      "sign_out_time": null,
-      "hours": 0
+      "signed_in": false,
+      "sign_out_time": "2025-11-26T12:36:33.791043",
+      "hours": 0.56
     },
     "03 60 32 DF": {
       "sign_in_time": "2025-11-26T12:03:30.022610",
@@ -620,9 +620,9 @@
     },
     "80 8D 05 20": {
       "sign_in_time": "2025-11-26T12:04:26.651166",
-      "signed_in": true,
-      "sign_out_time": null,
-      "hours": 0
+      "signed_in": false,
+      "sign_out_time": "2025-11-26T12:36:28.247629",
+      "hours": 0.53
     },
     "CB 20 50 EB": {
       "sign_in_time": "2025-11-26T12:04:46.159832",
@@ -656,9 +656,9 @@
     },
     "E0 4D E5 0F": {
       "sign_in_time": "2025-11-26T12:08:07.992936",
-      "signed_in": true,
-      "sign_out_time": null,
-      "hours": 0
+      "signed_in": false,
+      "sign_out_time": "2025-11-26T12:36:49.479439",
+      "hours": 0.48
     },
     "63 BD 9F D4": {
       "sign_in_time": "2025-11-26T12:08:35.121100",
