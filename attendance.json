@@ -580,5 +580,115 @@
       "sign_out_time": null,
       "hours": 0
     }
+  },
+  "2025-11-26": {
+    "C6 03 F2 B2": {
+      "sign_in_time": "2025-11-26T12:03:08.169923",
+      "signed_in": true,
+      "sign_out_time": null,
+      "hours": 0
+    },
+    "30 88 3C 20": {
+      "sign_in_time": "2025-11-26T12:03:12.776427",
+      "signed_in": true,
+      "sign_out_time": null,
+      "hours": 0
+    },
+    "03 60 32 DF": {
+      "sign_in_time": "2025-11-26T12:03:30.022610",
+      "signed_in": true,
+      "sign_out_time": null,
+      "hours": 0
+    },
+    "70 0A 10 10": {
+      "sign_in_time": "2025-11-26T12:03:50.952301",
+      "signed_in": true,
+      "sign_out_time": null,
+      "hours": 0
+    },
+    "F7 E6 FE E9": {
+      "sign_in_time": "2025-11-26T12:03:55.250678",
+      "signed_in": true,
+      "sign_out_time": null,
+      "hours": 0
+    },
+    "02 E8 25 B0": {
+      "sign_in_time": "2025-11-26T12:04:20.335373",
+      "signed_in": true,
+      "sign_out_time": null,
+      "hours": 0
+    },
+    "80 8D 05 20": {
+      "sign_in_time": "2025-11-26T12:04:26.651166",
+      "signed_in": true,
+      "sign_out_time": null,
+      "hours": 0
+    },
+    "CB 20 50 EB": {
+      "sign_in_time": "2025-11-26T12:04:46.159832",
+      "signed_in": true,
+      "sign_out_time": null,
+      "hours": 0
+    },
+    "EB 73 ED F2": {
+      "sign_in_time": "2025-11-26T12:08:18.338644",
+      "signed_in": true,
+      "sign_out_time": null,
+      "hours": 0
+    },
+    "CB 3B FF DE": {
+      "sign_in_time": "2025-11-26T12:05:01.633595",
+      "signed_in": true,
+      "sign_out_time": null,
+      "hours": 0
+    },
+    "33 D5 38 DF": {
+      "sign_in_time": "2025-11-26T12:05:05.304237",
+      "signed_in": true,
+      "sign_out_time": null,
+      "hours": 0
+    },
+    "53 00 69 C1": {
+      "sign_in_time": "2025-11-26T12:06:12.931871",
+      "signed_in": true,
+      "sign_out_time": null,
+      "hours": 0
+    },
+    "E0 4D E5 0F": {
+      "sign_in_time": "2025-11-26T12:08:07.992936",
+      "signed_in": true,
+      "sign_out_time": null,
+      "hours": 0
+    },
+    "63 BD 9F D4": {
+      "sign_in_time": "2025-11-26T12:08:35.121100",
+      "signed_in": true,
+      "sign_out_time": null,
+      "hours": 0
+    },
+    "D3 36 9A D4": {
+      "sign_in_time": "2025-11-26T12:08:47.420760",
+      "signed_in": true,
+      "sign_out_time": null,
+      "hours": 0
+    },
+    "83 72 75 C1": {
+      "sign_in_time": "2025-11-26T12:08:50.662145",
+      "signed_in": true,
+      "sign_out_time": null,
+      "hours": 0
+    },
+    "1B 6E 47 EB": {
+      "sign_in_time": "2025-11-26T12:09:10.295753",
+      "signed_in": true,
+      "sign_out_time": null,
+      "hours": 0
+    },
+    "C0 F9 ED 0F": {
+      "sign_in_time": "2025-11-26T12:09:39.300131",
+      "signed_in": true,
+      "sign_out_time": null,
+      "hours": 0
+    }
   }
 }
