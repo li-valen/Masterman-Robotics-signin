@@ -2,13 +2,13 @@ import { initializeApp } from "firebase/app";
 import { getFirestore } from "firebase/firestore";
 
 const firebaseConfig = {
-    apiKey: "AIzaSyDNeQid9j7i9tL07Tv08hq3g5O5S8BHfcI",
-    authDomain: "nfc-reader-21749.firebaseapp.com",
-    projectId: "nfc-reader-21749",
-    storageBucket: "nfc-reader-21749.firebasestorage.app",
-    messagingSenderId: "79995237308",
-    appId: "1:79995237308:web:82f76e105cc949c01131b9",
-    measurementId: "G-3N1WS47FE4"
+    apiKey: process.env.NEXT_PUBLIC_FIREBASE_API_KEY,
+    authDomain: process.env.NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN,
+    projectId: process.env.NEXT_PUBLIC_FIREBASE_PROJECT_ID,
+    storageBucket: process.env.NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET,
+    messagingSenderId: process.env.NEXT_PUBLIC_FIREBASE_MESSAGING_SENDER_ID,
+    appId: process.env.NEXT_PUBLIC_FIREBASE_APP_ID,
+    measurementId: process.env.NEXT_PUBLIC_FIREBASE_MEASUREMENT_ID
 };
 
 const app = initializeApp(firebaseConfig);
