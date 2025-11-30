@@ -16,8 +16,33 @@ from dotenv import load_dotenv
 
 # Load environment variables from .env (if present). This allows using a local
 # `.env` file instead of exporting env vars manually.
-load_dotenv()
 import requests
+import firebase_admin
+from firebase_admin import credentials
+from firebase_admin import firestore
+
+# Load environment variables from .env (if present). This allows using a local
+# `.env` file instead of exporting env vars manually.
+load_dotenv()
+
+# Initialize Firebase
+cred_path = 'serviceAccountKey.json'
+try:
+    if os.path.exists(cred_path):
+        cred = credentials.Certificate(cred_path)
+        firebase_admin.initialize_app(cred)
+        print(f"Initialized Firebase with {cred_path}")
+    else:
+        firebase_admin.initialize_app()
+        print("Initialized Firebase with default credentials")
+except Exception as e:
+    print(f"Warning: Firebase initialization failed: {e}")
+
+try:
+    db = firestore.client()
+except Exception as e:
+    db = None
+    print(f"Warning: Could not get Firestore client: {e}")
 
 # Note: we previously supported ngrok via pyngrok. That was removed in favor of
 # Cloudflare Tunnel (`cloudflared`) for stable, free hostnames without port
@@ -46,11 +71,6 @@ current_card_info = None
 loaded_key = None
 sign_in_mode = True  # True = sign in mode, False = sign out mode
 
-# Card names storage file
-CARD_NAMES_FILE = 'card_names.json'
-# Attendance storage file
-ATTENDANCE_FILE = 'attendance.json'
-
 # Card name mapping
 CARD_NAME_MAP = {
     "00 01": "MIFARE Classic 1K",
@@ -61,220 +81,154 @@ CARD_NAME_MAP = {
     "F0 11": "FeliCa 212K/424K"
 }
 
-def load_card_names():
-    """Load card names from JSON file"""
-    if os.path.exists(CARD_NAMES_FILE):
-        try:
-            with open(CARD_NAMES_FILE, 'r') as f:
-                return json.load(f)
-        except:
-            return {}
-    return {}
-
-def save_card_names(card_names):
-    """Save card names to JSON file"""
+def get_all_card_names():
+    """Get all card names from Firestore"""
+    if db is None: return {}
     try:
-        with open(CARD_NAMES_FILE, 'w') as f:
-            json.dump(card_names, f, indent=2)
-        return True
+        docs = db.collection('card_names').stream()
+        return {doc.id: doc.to_dict().get('name') for doc in docs}
     except Exception as e:
-        print(f"Error saving card names: {e}")
-        return False
+        print(f"Error getting card names: {e}")
+        return {}
 
 def get_card_name(uid):
     """Get the saved name for a card UID"""
-    if uid is None:
+    if uid is None or db is None:
         return None
-    card_names = load_card_names()
-    return card_names.get(uid, None)
+    try:
+        doc = db.collection('card_names').document(uid).get()
+        if doc.exists:
+            return doc.to_dict().get('name')
+    except Exception as e:
+        print(f"Error getting card name: {e}")
+    return None
 
 def set_card_name(uid, name):
     """Set the name for a card UID"""
-    if uid is None:
+    if uid is None or db is None:
         return False
-    card_names = load_card_names()
-    card_names[uid] = name
-    return save_card_names(card_names)
-
-def load_attendance():
-    """Load attendance data from JSON file"""
-    if os.path.exists(ATTENDANCE_FILE):
-        try:
-            with open(ATTENDANCE_FILE, 'r') as f:
-                return json.load(f)
-        except:
-            return {}
-    return {}
-
-def save_attendance(attendance_data):
-    """Save attendance data to JSON file"""
     try:
-        with open(ATTENDANCE_FILE, 'w') as f:
-            json.dump(attendance_data, f, indent=2)
+        db.collection('card_names').document(uid).set({'name': name})
         return True
     except Exception as e:
-        print(f"Error saving attendance: {e}")
+        print(f"Error setting card name: {e}")
         return False
 
-
-def _push_attendance_to_remote(payload: dict):
-    """Sends attendance payload to remote endpoint if configured.
-
-    This is synchronous and meant to be called inside a thread.
-    """
-    remote_url = os.environ.get('REMOTE_SAVE_URL')
-    if not remote_url:
-        return
-    headers = {'Content-Type': 'application/json'}
-    token = os.environ.get('REMOTE_SAVE_TOKEN')
-    if token:
-        headers['Authorization'] = f'Bearer {token}'
-    try:
-        resp = requests.post(remote_url, json=payload, headers=headers, timeout=10)
-        if resp.status_code >= 400:
-            print(f"Remote save failed ({resp.status_code}): {resp.text}")
-    except Exception as e:
-        print(f"Error pushing attendance to remote: {e}")
-
-
-def push_attendance_to_remote_async(payload: dict):
-    """Fire-and-forget push to remote endpoint."""
-    try:
-        t = threading.Thread(target=_push_attendance_to_remote, args=(payload,), daemon=True)
-        t.start()
-    except Exception as e:
-        print(f"Failed to start remote push thread: {e}")
 
 def record_sign_in(uid):
     """Record a sign-in for a card UID today"""
-    if uid is None:
+    if uid is None or db is None:
         return False
-    attendance = load_attendance()
+    
     today = date.today().isoformat()
+    doc_ref = db.collection('attendance').document(today)
     
-    if today not in attendance:
-        attendance[today] = {}
-    
-    # If already signed in today, don't overwrite - just update sign-in time
-    if uid in attendance[today] and attendance[today][uid].get("signed_in", False):
-        # Already signed in, update sign-in time
-        attendance[today][uid]["sign_in_time"] = datetime.now().isoformat()
-    else:
-        # New sign-in
-        attendance[today][uid] = {
-            "sign_in_time": datetime.now().isoformat(),
-            "signed_in": True,
-            "sign_out_time": None,
-            "hours": 0
-        }
-    
-    saved = save_attendance(attendance)
-    # After saving locally, attempt to push the new attendance day to a remote endpoint
     try:
-        payload = {"date": today, "attendance": attendance.get(today, {}), "card_names": load_card_names()}
-        push_attendance_to_remote_async(payload)
-    except Exception:
-        pass
-    return saved
+        doc = doc_ref.get()
+        if doc.exists:
+            attendance_day = doc.to_dict()
+        else:
+            attendance_day = {}
+        
+        # If already signed in today, don't overwrite - just update sign-in time
+        if uid in attendance_day and attendance_day[uid].get("signed_in", False):
+            # Already signed in, update sign-in time
+            attendance_day[uid]["sign_in_time"] = datetime.now().isoformat()
+        else:
+            # New sign-in
+            attendance_day[uid] = {
+                "sign_in_time": datetime.now().isoformat(),
+                "signed_in": True,
+                "sign_out_time": None,
+                "hours": 0
+            }
+        
+        doc_ref.set(attendance_day)
+        return True
+    except Exception as e:
+        print(f"Error recording sign in: {e}")
+        return False
 
 
 def record_sign_out(uid):
     """Record a sign-out for a card UID today and calculate hours"""
-    if uid is None:
+    if uid is None or db is None:
         return False
-    attendance = load_attendance()
+    
     today = date.today().isoformat()
+    doc_ref = db.collection('attendance').document(today)
     
-    if today not in attendance or uid not in attendance[today]:
-        return False
-    
-    if not attendance[today][uid].get("signed_in", False):
-        return False
-    
-    sign_out_time = datetime.now()
-    sign_in_time_str = attendance[today][uid].get("sign_in_time")
-    
-    if sign_in_time_str:
-        sign_in_time = datetime.fromisoformat(sign_in_time_str)
-        time_diff = sign_out_time - sign_in_time
-        hours = time_diff.total_seconds() / 3600.0  # Convert to hours
-        
-        attendance[today][uid]["sign_out_time"] = sign_out_time.isoformat()
-        attendance[today][uid]["hours"] = round(hours, 2)
-        attendance[today][uid]["signed_in"] = False
-    
-    saved = save_attendance(attendance)
-    # After saving locally, push day's attendance to remote if configured
     try:
-        payload = {"date": today, "attendance": attendance.get(today, {}), "card_names": load_card_names()}
-        push_attendance_to_remote_async(payload)
-    except Exception:
-        pass
-    return saved
+        doc = doc_ref.get()
+        if not doc.exists:
+            return False
+            
+        attendance_day = doc.to_dict()
+        
+        if uid not in attendance_day:
+            return False
+        
+        if not attendance_day[uid].get("signed_in", False):
+            return False
+        
+        sign_out_time = datetime.now()
+        sign_in_time_str = attendance_day[uid].get("sign_in_time")
+        
+        if sign_in_time_str:
+            sign_in_time = datetime.fromisoformat(sign_in_time_str)
+            time_diff = sign_out_time - sign_in_time
+            hours = time_diff.total_seconds() / 3600.0  # Convert to hours
+            
+            attendance_day[uid]["sign_out_time"] = sign_out_time.isoformat()
+            attendance_day[uid]["hours"] = round(hours, 2)
+            attendance_day[uid]["signed_in"] = False
+        
+        doc_ref.set(attendance_day)
+        return True
+    except Exception as e:
+        print(f"Error recording sign out: {e}")
+        return False
 
 def has_signed_in_today(uid):
     """Check if a card UID has signed in today"""
-    if uid is None:
+    if uid is None or db is None:
         return False
-    attendance = load_attendance()
+    
     today = date.today().isoformat()
-    
-    if today not in attendance:
+    try:
+        doc = db.collection('attendance').document(today).get()
+        if not doc.exists:
+            return False
+        
+        attendance_day = doc.to_dict()
+        return uid in attendance_day and attendance_day[uid].get("signed_in", False)
+    except Exception as e:
+        print(f"Error checking sign in status: {e}")
         return False
-
-
-    def periodic_remote_sync(interval_minutes: int = 10):
-        """Start a background thread that pushes the full attendance and card names to the remote endpoint every `interval_minutes` minutes.
-
-        This uses the internal synchronous `_push_attendance_to_remote` helper inside the thread to avoid creating too many short-lived threads.
-        """
-        def _loop():
-            print(f"Starting periodic remote sync every {interval_minutes} minute(s)")
-            while True:
-                try:
-                    attendance = load_attendance()
-                    payload = {"attendance": attendance, "card_names": load_card_names()}
-                    _push_attendance_to_remote(payload)
-                except Exception as e:
-                    print(f"Periodic remote sync error: {e}")
-                time.sleep(interval_minutes * 60)
-
-        t = threading.Thread(target=_loop, daemon=True)
-        t.start()
-        return t
-
-
-    @app.route('/api/trigger-remote-sync', methods=['POST'])
-    def trigger_remote_sync():
-        """Manually trigger an immediate push of the current attendance and card names to the configured remote endpoint.
-
-        Returns JSON indicating whether the trigger was started. This does not wait for the remote call to finish.
-        """
-        try:
-            attendance = load_attendance()
-            payload = {"attendance": attendance, "card_names": load_card_names()}
-            push_attendance_to_remote_async(payload)
-            return jsonify({"success": True, "message": "Triggered remote sync"})
-        except Exception as e:
-            return jsonify({"success": False, "error": str(e)}), 500
-    
-    return uid in attendance[today] and attendance[today][uid].get("signed_in", False)
 
 def get_attendance_status():
     """Get attendance status for all registered cards for today"""
-    card_names = load_card_names()
-    attendance = load_attendance()
+    card_names = get_all_card_names()
     today = date.today().isoformat()
+    
+    attendance_day = {}
+    if db:
+        try:
+            doc = db.collection('attendance').document(today).get()
+            if doc.exists:
+                attendance_day = doc.to_dict()
+        except Exception as e:
+            print(f"Error getting attendance status: {e}")
     
     status_list = []
     for uid, name in card_names.items():
-        has_signed_in = today in attendance and uid in attendance[today] and attendance[today][uid].get("signed_in", False)
+        has_signed_in = uid in attendance_day and attendance_day[uid].get("signed_in", False)
         sign_in_time = None
         sign_out_time = None
         hours = 0
         
-        if today in attendance and uid in attendance[today]:
-            entry = attendance[today][uid]
+        if uid in attendance_day:
+            entry = attendance_day[uid]
             sign_in_time = entry.get("sign_in_time")
             sign_out_time = entry.get("sign_out_time")
             hours = entry.get("hours", 0)
@@ -292,60 +246,69 @@ def get_attendance_status():
 
 def get_person_profile(uid):
     """Get complete profile data for a person including all attendance history"""
-    if uid is None:
+    if uid is None or db is None:
         return None
 
-    card_names = load_card_names()
-    # If the UID isn't in saved card names, still build a profile using the
-    # UID as a fallback name. Previously we returned `None` which caused the
-    # UI to show "Profile not found" for recently-seen cards that haven't
-    # yet been persisted to `card_names.json`.
-    attendance = load_attendance()
-    name = card_names.get(uid, uid)
+    name = get_card_name(uid) or uid
     
     # Get all attendance records for this person
     attendance_history = []
     total_hours = 0
     days_attended = 0
     
-    # Get all dates from attendance
-    all_dates = sorted(attendance.keys(), reverse=True)
-    
-    for day in all_dates:
-        if uid in attendance[day]:
-            entry = attendance[day][uid]
-            sign_in_time = entry.get("sign_in_time")
-            sign_out_time = entry.get("sign_out_time")
-            hours = entry.get("hours", 0)
-            signed_in = entry.get("signed_in", False)
+    try:
+        # Query all attendance documents
+        # This might be slow if there are many days. 
+        # Optimization: Query only documents where this UID exists? 
+        # Firestore doesn't easily support "documents where field key X exists" without a map structure query which is tricky.
+        # But we can stream all days.
+        docs = db.collection('attendance').stream()
+        
+        # Sort docs by ID (date)
+        all_docs = sorted(list(docs), key=lambda x: x.id, reverse=True)
+        total_days = len(all_docs)
+        
+        for doc in all_docs:
+            day = doc.id
+            data = doc.to_dict()
             
-            attended = sign_in_time is not None
-            
-            attendance_history.append({
-                "date": day,
-                "signInTime": sign_in_time,
-                "signOutTime": sign_out_time,
-                "hours": hours,
-                "signedIn": signed_in,
-                "attended": attended
-            })
-            
-            if attended:
-                days_attended += 1
-                total_hours += hours
-        else:
-            # Day exists but person didn't attend
-            attendance_history.append({
-                "date": day,
-                "signInTime": None,
-                "signOutTime": None,
-                "hours": 0,
-                "signedIn": False,
-                "attended": False
-            })
+            if uid in data:
+                entry = data[uid]
+                sign_in_time = entry.get("sign_in_time")
+                sign_out_time = entry.get("sign_out_time")
+                hours = entry.get("hours", 0)
+                signed_in = entry.get("signed_in", False)
+                
+                attended = sign_in_time is not None
+                
+                attendance_history.append({
+                    "date": day,
+                    "signInTime": sign_in_time,
+                    "signOutTime": sign_out_time,
+                    "hours": hours,
+                    "signedIn": signed_in,
+                    "attended": attended
+                })
+                
+                if attended:
+                    days_attended += 1
+                    total_hours += hours
+            else:
+                # Day exists but person didn't attend
+                attendance_history.append({
+                    "date": day,
+                    "signInTime": None,
+                    "signOutTime": None,
+                    "hours": 0,
+                    "signedIn": False,
+                    "attended": False
+                })
+                
+    except Exception as e:
+        print(f"Error getting person profile: {e}")
+        return None
     
     # Calculate statistics
-    total_days = len(all_dates)
     days_missed = total_days - days_attended
     average_hours = total_hours / days_attended if days_attended > 0 else 0
     attendance_rate = (days_attended / total_days * 100) if total_days > 0 else 0
@@ -843,10 +806,10 @@ def get_card_name_api():
         return jsonify({"success": False, "error": str(e)}), 500
 
 @app.route('/api/get-all-card-names', methods=['GET'])
-def get_all_card_names():
+def api_get_all_card_names():
     """Get all saved card names"""
     try:
-        card_names = load_card_names()
+        card_names = get_all_card_names()
         return jsonify({"success": True, "cardNames": card_names})
     except Exception as e:
         return jsonify({"success": False, "error": str(e)}), 500
@@ -953,13 +916,7 @@ if __name__ == '__main__':
     # Initialize reader on startup
     init_nfc_reader()
     # Optionally start periodic remote sync if REMOTE_SYNC_INTERVAL_MIN is set
-    try:
-        interval_min = int(os.environ.get('REMOTE_SYNC_INTERVAL_MIN', '0') or '0')
-        if interval_min > 0:
-            periodic_remote_sync(interval_min)
-    except Exception:
-        # ignore invalid env value
-        pass
+    # (Removed in favor of direct Firebase integration)
     # For local/public exposure, prefer Cloudflare Tunnel (cloudflared).
     # To run a quick ephemeral tunnel:
     #   cloudflared tunnel --url http://localhost:5001

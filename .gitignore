@@ -39,3 +39,4 @@ yarn-error.log*
 !public/attendance.json
 !public/card_names.json
 
+serviceAccountKey.json

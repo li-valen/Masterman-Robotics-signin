@@ -3,12 +3,8 @@
 import { useEffect, useState } from 'react';
 import Link from 'next/link';
 import { useSearchParams } from 'next/navigation';
-
-// Use local backend when developing locally; otherwise use the serverless relative API path
-const LOCAL_API = 'http://localhost:5001/api';
-const API_BASE = (typeof window !== 'undefined' && (
-  window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1'
-)) ? (process.env.NEXT_PUBLIC_API_URL || LOCAL_API) : '/api';
+import { db } from '@/lib/firebase';
+import { collection, getDocs, doc, getDoc } from 'firebase/firestore';
 
 interface AttendanceDay {
   date: string;
@@ -45,81 +41,61 @@ export default function ProfileClient() {
 
     const fetchProfile = async () => {
       try {
-        // If running against the deployed app, there may be no server-side
-        // `person-profile` endpoint. In that case, fetch the persisted gist
-        // from `/api/fetch-attendance` and compute the profile client-side.
-        if (API_BASE === '/api') {
-          const resp = await fetch('/api/fetch-attendance');
-          const data = await resp.json();
-          if (!data.success) {
-            console.error('fetch-attendance failed', data);
-            return;
-          }
+        // Fetch card name
+        const nameDoc = await getDoc(doc(db, "card_names", uid));
+        const name = nameDoc.exists() ? nameDoc.data().name : uid;
 
-          // Normalize attendance shape (handle nested attendance.card_names)
-          let attendanceByDate: Record<string, any> = data.attendance as any;
-          let cardNamesMap: Record<string, string> = (data as any).cardNames || {};
-          if (attendanceByDate && attendanceByDate.attendance) {
-            const nested = attendanceByDate;
-            attendanceByDate = nested.attendance || {};
-            const nestedCardNames = nested.card_names || nested.cardNames || {};
-            const top = (data as any).cardNames || {};
-            cardNamesMap = Object.keys(top).length > 0 ? top : nestedCardNames;
-          }
+        // Fetch all attendance records
+        const attendanceSnapshot = await getDocs(collection(db, "attendance"));
+        const attendanceByDate: Record<string, any> = {};
+        attendanceSnapshot.docs.forEach(doc => {
+          attendanceByDate[doc.id] = doc.data();
+        });
 
-          // Build profile for uid
-          const dates = Object.keys(attendanceByDate).sort();
-          const attendanceHistory: any[] = dates.map((d) => {
-            const day = attendanceByDate[d] || {};
-            const e = day[uid];
-            if (e) {
-              return {
-                date: d,
-                signInTime: e.sign_in_time || null,
-                signOutTime: e.sign_out_time || null,
-                hours: e.hours || 0,
-                signedIn: !!e.signed_in,
-                attended: !!e.signed_in || (e.sign_out_time != null)
-              };
-            }
+        // Build profile for uid
+        const dates = Object.keys(attendanceByDate).sort().reverse(); // Newest first
+        const attendanceHistory: AttendanceDay[] = dates.map((d) => {
+          const day = attendanceByDate[d] || {};
+          const e = day[uid];
+          if (e) {
             return {
               date: d,
-              signInTime: null,
-              signOutTime: null,
-              hours: 0,
-              signedIn: false,
-              attended: false
+              signInTime: e.sign_in_time || null,
+              signOutTime: e.sign_out_time || null,
+              hours: e.hours || 0,
+              signedIn: !!e.signed_in,
+              attended: !!e.signed_in || (e.sign_out_time != null)
             };
-          });
-
-          const totalDays = attendanceHistory.length;
-          const daysAttended = attendanceHistory.filter((x) => x.attended).length;
-          const totalHours = attendanceHistory.reduce((s, x) => s + (x.hours || 0), 0);
-          const averageHours = totalDays > 0 ? totalHours / totalDays : 0;
-          const attendanceRate = totalDays > 0 ? (daysAttended / totalDays) * 100 : 0;
-
-          const profileObj: Profile = {
-            uid,
-            name: cardNamesMap[uid] || uid,
-            totalHours: totalHours,
-            daysAttended: daysAttended,
-            daysMissed: totalDays - daysAttended,
-            totalDays: totalDays,
-            averageHours: averageHours,
-            attendanceRate: attendanceRate,
-            attendanceHistory: attendanceHistory
+          }
+          return {
+            date: d,
+            signInTime: null,
+            signOutTime: null,
+            hours: 0,
+            signedIn: false,
+            attended: false
           };
+        });
 
-          setProfile(profileObj);
-          return;
-        }
+        const totalDays = attendanceHistory.length;
+        const daysAttended = attendanceHistory.filter((x) => x.attended).length;
+        const totalHours = attendanceHistory.reduce((s, x) => s + (x.hours || 0), 0);
+        const averageHours = daysAttended > 0 ? totalHours / daysAttended : 0;
+        const attendanceRate = totalDays > 0 ? (daysAttended / totalDays) * 100 : 0;
 
-        // Fallback: call the local backend person-profile endpoint
-        const response = await fetch(`${API_BASE}/person-profile?uid=${encodeURIComponent(uid)}`);
-        const data = await response.json();
-        if (data.success) {
-          setProfile(data.profile);
-        }
+        const profileObj: Profile = {
+          uid,
+          name,
+          totalHours,
+          daysAttended,
+          daysMissed: totalDays - daysAttended,
+          totalDays,
+          averageHours,
+          attendanceRate,
+          attendanceHistory
+        };
+
+        setProfile(profileObj);
       } catch (error) {
         console.error('Error fetching profile:', error);
       } finally {

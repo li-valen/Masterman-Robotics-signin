@@ -2,6 +2,8 @@
 
 import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
+import { db } from "@/lib/firebase";
+import { collection, getDocs, doc, setDoc, getDoc } from "firebase/firestore";
 
 interface AttendanceEntry {
   uid: string;
@@ -23,39 +25,47 @@ export default function AttendancePage() {
 
   const availableDates = useMemo(() => Object.keys(attendanceMap).sort().reverse(), [attendanceMap]);
 
-  const fetchRepoFiles = async () => {
+  const fetchData = async () => {
     setLoading(true);
     try {
-      const [attResp, namesResp] = await Promise.all([
-        fetch('/attendance.json'),
-        fetch('/card_names.json')
-      ]);
+      // Fetch card names
+      const namesSnapshot = await getDocs(collection(db, "card_names"));
+      const namesData: Record<string, string> = {};
+      namesSnapshot.docs.forEach(doc => {
+        namesData[doc.id] = doc.data().name;
+      });
+      setCardNames(namesData);
 
-      const attJson = attResp.ok ? await attResp.json() : {};
-      const namesJson = namesResp.ok ? await namesResp.json() : {};
+      // Fetch attendance
+      const attendanceSnapshot = await getDocs(collection(db, "attendance"));
+      const attendanceData: AttendanceByDate = {};
+      attendanceSnapshot.docs.forEach(doc => {
+        attendanceData[doc.id] = doc.data() as any;
+      });
+      setAttendanceMap(attendanceData);
 
-      setAttendanceMap(attJson || {});
-      setCardNames(namesJson || {});
-
-      // default selected date: today if present, else most recent
-      const today = new Date().toISOString().slice(0,10);
-      if (attJson && attJson[today]) setSelectedDate(today);
-      else {
-        const keys = Object.keys(attJson || {}).sort().reverse();
-        setSelectedDate(keys.length ? keys[0] : null);
+      // Set default date
+      if (!selectedDate) {
+        const today = new Date().toISOString().slice(0, 10);
+        if (attendanceData[today]) {
+          setSelectedDate(today);
+        } else {
+          const keys = Object.keys(attendanceData).sort().reverse();
+          if (keys.length > 0) setSelectedDate(keys[0]);
+        }
       }
 
       setLastUpdate(new Date());
-    } catch (e) {
-      console.error('Failed to read local attendance files', e);
+    } catch (error) {
+      console.error("Error fetching data:", error);
     } finally {
       setLoading(false);
     }
   };
 
   useEffect(() => {
-    fetchRepoFiles();
-    const interval = setInterval(fetchRepoFiles, 5000);
+    fetchData();
+    const interval = setInterval(fetchData, 10000); // Refresh every 10s
     return () => clearInterval(interval);
   }, []);
 
@@ -75,65 +85,83 @@ export default function AttendancePage() {
         hours: e.hours || 0
       });
     }
-    return list.sort((a,b) => a.name.localeCompare(b.name));
+    return list.sort((a, b) => a.name.localeCompare(b.name));
   }, [selectedDate, attendanceMap, cardNames]);
 
   const signedInCount = entries.filter(e => e.signedIn).length;
   const totalCount = entries.length;
 
-  // Save updated attendanceMap + cardNames back to server (local only)
-  const saveToRepo = async (newMap: AttendanceByDate, newNames: Record<string,string>) => {
-    setAttendanceMap(newMap);
-    setCardNames(newNames);
-    setLastUpdate(new Date());
+  const updateAttendance = async (date: string, uid: string, data: any) => {
     try {
-      const resp = await fetch('/api/save-attendance', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ attendance: newMap, card_names: newNames })
-      });
-      if (!resp.ok) {
-        const txt = await resp.text();
-        console.warn('Save rejected:', txt);
-      }
-    } catch (e) {
-      console.warn('Save failed (likely running on Vercel or read-only environment):', e);
+      const dateRef = doc(db, "attendance", date);
+      const dateDoc = await getDoc(dateRef);
+      const currentData = dateDoc.exists() ? dateDoc.data() : {};
+
+      const newData = {
+        ...currentData,
+        [uid]: data
+      };
+
+      await setDoc(dateRef, newData);
+
+      // Update local state immediately for better UX
+      setAttendanceMap(prev => ({
+        ...prev,
+        [date]: newData as any
+      }));
+    } catch (error) {
+      console.error("Error updating attendance:", error);
+      alert("Failed to update attendance");
     }
   };
 
-  const toggleSign = (uid: string) => {
+  const toggleSign = async (uid: string) => {
     if (!selectedDate) return;
-    const newMap = { ...attendanceMap };
-    if (!newMap[selectedDate]) newMap[selectedDate] = {};
-    const entry = newMap[selectedDate][uid] || { sign_in_time: null, sign_out_time: null, signed_in: false, hours: 0 };
-    if (entry.signed_in) {
+    const day = attendanceMap[selectedDate] || {};
+    const entry = day[uid] || { sign_in_time: null, sign_out_time: null, signed_in: false, hours: 0 };
+
+    const newEntry = { ...entry };
+    if (newEntry.signed_in) {
       // sign out
-      entry.signed_in = false;
-      entry.sign_out_time = new Date().toISOString();
-      // compute hours if sign_in_time present
-      if (entry.sign_in_time) {
-        const diff = (new Date(entry.sign_out_time).getTime() - new Date(entry.sign_in_time).getTime())/3600000;
-        entry.hours = Math.max(0, diff);
+      newEntry.signed_in = false;
+      newEntry.sign_out_time = new Date().toISOString();
+      if (newEntry.sign_in_time) {
+        const diff = (new Date(newEntry.sign_out_time).getTime() - new Date(newEntry.sign_in_time).getTime()) / 3600000;
+        newEntry.hours = Math.max(0, diff);
       }
     } else {
       // sign in
-      entry.signed_in = true;
-      entry.sign_in_time = new Date().toISOString();
-      entry.sign_out_time = null;
-      entry.hours = 0;
+      newEntry.signed_in = true;
+      newEntry.sign_in_time = new Date().toISOString();
+      newEntry.sign_out_time = null;
+      newEntry.hours = 0;
     }
-    newMap[selectedDate][uid] = entry;
-    saveToRepo(newMap, cardNames);
+
+    await updateAttendance(selectedDate, uid, newEntry);
   };
 
-  const addManual = (uid: string, name?: string) => {
+  const addManual = async (uid: string, name?: string) => {
     if (!selectedDate || !uid) return;
-    const newMap = { ...attendanceMap };
-    if (!newMap[selectedDate]) newMap[selectedDate] = {};
-    newMap[selectedDate][uid] = { sign_in_time: new Date().toISOString(), sign_out_time: null, signed_in: true, hours: 0 };
-    const newNames = { ...cardNames };
-    if (name) newNames[uid] = name;
-    saveToRepo(newMap, newNames);
+
+    // Update name if provided
+    if (name) {
+      try {
+        await setDoc(doc(db, "card_names", uid), { name });
+        setCardNames(prev => ({ ...prev, [uid]: name }));
+      } catch (error) {
+        console.error("Error updating name:", error);
+      }
+    }
+
+    // Add attendance entry
+    const newEntry = {
+      sign_in_time: new Date().toISOString(),
+      sign_out_time: null,
+      signed_in: true,
+      hours: 0
+    };
+
+    await updateAttendance(selectedDate, uid, newEntry);
   };
 
   return (
@@ -157,7 +185,7 @@ export default function AttendancePage() {
               ))}
             </select>
 
-            <button onClick={fetchRepoFiles} className="ml-auto px-3 py-2 bg-gray-200 dark:bg-gray-700 rounded">Reload</button>
+            <button onClick={fetchData} className="ml-auto px-3 py-2 bg-gray-200 dark:bg-gray-700 rounded">Reload</button>
           </div>
         </div>
 
