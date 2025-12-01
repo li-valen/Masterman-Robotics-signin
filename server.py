@@ -464,15 +464,24 @@ def card_detection_loop():
                         global sign_in_mode
                         if sign_in_mode:
                             # Sign in mode: record sign-in
-                            record_sign_in(uid)
-                            card_status_queue.put({
-                                "status": "card_detected",
-                                "uid": uid,
-                                "name": card_name,
-                                "info": info,
-                                "action": "signed_in",
-                                "timestamp": time.time()
-                            })
+                            if record_sign_in(uid):
+                                card_status_queue.put({
+                                    "status": "card_detected",
+                                    "uid": uid,
+                                    "name": card_name,
+                                    "info": info,
+                                    "action": "signed_in",
+                                    "timestamp": time.time()
+                                })
+                            else:
+                                card_status_queue.put({
+                                    "status": "card_detected",
+                                    "uid": uid,
+                                    "name": card_name,
+                                    "info": info,
+                                    "action": "sign_in_failed",
+                                    "timestamp": time.time()
+                                })
                         else:
                             # Sign out mode: record sign-out
                             if record_sign_out(uid):

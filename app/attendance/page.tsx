@@ -23,6 +23,12 @@ export default function AttendancePage() {
   const [selectedDate, setSelectedDate] = useState<string | null>(null);
   const [lastUpdate, setLastUpdate] = useState<Date | null>(null);
 
+  // Auth state
+  const [isAuthenticated, setIsAuthenticated] = useState(false);
+  const [showPasswordModal, setShowPasswordModal] = useState(false);
+  const [passwordInput, setPasswordInput] = useState("");
+  const [pendingAction, setPendingAction] = useState<(() => Promise<void>) | null>(null);
+
   const availableDates = useMemo(() => Object.keys(attendanceMap).sort().reverse(), [attendanceMap]);
 
   const fetchData = async () => {
@@ -90,6 +96,31 @@ export default function AttendancePage() {
 
   const signedInCount = entries.filter(e => e.signedIn).length;
   const totalCount = entries.length;
+
+  const checkAuth = (action: () => Promise<void>) => {
+    if (isAuthenticated) {
+      action();
+    } else {
+      setPendingAction(() => action);
+      setShowPasswordModal(true);
+    }
+  };
+
+  const handlePasswordSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (passwordInput === process.env.NEXT_PUBLIC_ADMIN_PASSWORD) {
+      setIsAuthenticated(true);
+      setShowPasswordModal(false);
+      setPasswordInput("");
+      if (pendingAction) {
+        pendingAction();
+        setPendingAction(null);
+      }
+    } else {
+      alert("Incorrect password");
+      setPasswordInput("");
+    }
+  };
 
   const updateAttendance = async (date: string, uid: string, data: any) => {
     try {
@@ -217,9 +248,10 @@ export default function AttendancePage() {
                 const uid = uidEl.value.trim();
                 const name = nameEl?.value.trim() || undefined;
                 if (uid) {
-                  addManual(uid, name);
-                  uidEl.value = '';
-                  if (nameEl) nameEl.value = '';
+                  checkAuth(() => addManual(uid, name).then(() => {
+                    uidEl.value = '';
+                    if (nameEl) nameEl.value = '';
+                  }));
                 }
               }} className="px-3 py-2 bg-blue-500 text-white rounded">Manual Sign In</button>
             </div>
@@ -241,7 +273,7 @@ export default function AttendancePage() {
                   {entry.signedIn && entry.signInTime && <p className="text-xs text-gray-500">In: {new Date(entry.signInTime).toLocaleTimeString()}</p>}
                   {!entry.signedIn && entry.signOutTime && <p className="text-xs text-gray-500">Out: {new Date(entry.signOutTime).toLocaleTimeString()}</p>}
                   <div className="mt-3 flex gap-2">
-                    <button onClick={() => toggleSign(entry.uid)} className="px-3 py-1 bg-indigo-500 text-white rounded text-sm">{entry.signedIn ? 'Sign Out' : 'Sign In'}</button>
+                    <button onClick={() => checkAuth(() => toggleSign(entry.uid))} className="px-3 py-1 bg-indigo-500 text-white rounded text-sm">{entry.signedIn ? 'Sign Out' : 'Sign In'}</button>
                     <Link href={`/attendance/profile?uid=${encodeURIComponent(entry.uid)}`} className="px-3 py-1 bg-gray-200 rounded text-sm">Profile</Link>
                   </div>
                 </div>
@@ -250,6 +282,44 @@ export default function AttendancePage() {
           )}
         </div>
       </div>
+
+      {/* Password Modal */}
+      {showPasswordModal && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
+          <div className="bg-white dark:bg-gray-800 p-6 rounded-lg shadow-xl max-w-sm w-full">
+            <h3 className="text-xl font-bold mb-4 text-gray-900 dark:text-white">Admin Authentication</h3>
+            <form onSubmit={handlePasswordSubmit}>
+              <input
+                type="password"
+                value={passwordInput}
+                onChange={(e) => setPasswordInput(e.target.value)}
+                placeholder="Enter admin password"
+                className="w-full px-4 py-2 border rounded mb-4 dark:bg-gray-700 dark:text-white"
+                autoFocus
+              />
+              <div className="flex justify-end gap-2">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setShowPasswordModal(false);
+                    setPasswordInput("");
+                    setPendingAction(null);
+                  }}
+                  className="px-4 py-2 text-gray-600 hover:bg-gray-100 rounded"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  className="px-4 py-2 bg-blue-500 text-white rounded hover:bg-blue-600"
+                >
+                  Submit
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
     </main>
   );
 }
