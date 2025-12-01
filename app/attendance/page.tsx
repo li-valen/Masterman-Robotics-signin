@@ -108,7 +108,8 @@ export default function AttendancePage() {
 
   const handlePasswordSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    if (passwordInput === process.env.NEXT_PUBLIC_ADMIN_PASSWORD) {
+    const adminPassword = process.env.NEXT_PUBLIC_ADMIN_PASSWORD || "robotics";
+    if (passwordInput === adminPassword) {
       setIsAuthenticated(true);
       setShowPasswordModal(false);
       setPasswordInput("");
