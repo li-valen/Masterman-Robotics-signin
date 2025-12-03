@@ -283,6 +283,14 @@ export default function AttendancePage() {
                   <div className="mt-3 flex gap-2">
                     <button onClick={() => checkAuth(() => toggleSign(entry.uid))} className="px-3 py-1 bg-indigo-500 text-white rounded text-sm">{entry.signedIn ? 'Sign Out' : 'Sign In'}</button>
                     <Link href={`/attendance/profile?uid=${encodeURIComponent(entry.uid)}`} className="px-3 py-1 bg-gray-200 rounded text-sm">Profile</Link>
+                    {isAuthenticated && (
+                      <button
+                        onClick={() => updateAttendance(selectedDate!, entry.uid, { ...attendanceMap[selectedDate!][entry.uid], overrideAutoSignOut: !((attendanceMap[selectedDate!][entry.uid] as any).overrideAutoSignOut) })}
+                        className={`px-3 py-1 rounded text-sm ${(attendanceMap[selectedDate!][entry.uid] as any)?.overrideAutoSignOut ? 'bg-yellow-500 text-white' : 'bg-gray-200 text-gray-600'}`}
+                      >
+                        {(attendanceMap[selectedDate!][entry.uid] as any)?.overrideAutoSignOut ? 'Auto Sign-out OFF' : 'Auto Sign-out ON'}
+                      </button>
+                    )}
                   </div>
                 </div>
               ))}

@@ -924,6 +924,56 @@ def get_mode():
 if __name__ == '__main__':
     # Initialize reader on startup
     init_nfc_reader()
+
+    # Start auto sign-out thread
+    def auto_sign_out_loop():
+        """Background thread to auto sign out users after 2 hours"""
+        print("Starting auto sign-out loop...")
+        while True:
+            try:
+                if db:
+                    today = date.today().isoformat()
+                    doc_ref = db.collection('attendance').document(today)
+                    doc = doc_ref.get()
+                    
+                    if doc.exists:
+                        attendance_day = doc.to_dict()
+                        now = datetime.now()
+                        updates_made = False
+                        
+                        for uid, entry in attendance_day.items():
+                            if entry.get("signed_in", False):
+                                # Check for override
+                                if entry.get("overrideAutoSignOut", False):
+                                    continue
+                                    
+                                sign_in_time_str = entry.get("sign_in_time")
+                                if sign_in_time_str:
+                                    sign_in_time = datetime.fromisoformat(sign_in_time_str)
+                                    duration = (now - sign_in_time).total_seconds() / 3600.0
+                                    
+                                    if duration > 2.0:
+                                        print(f"Auto signing out {uid} after {duration:.2f} hours")
+                                        # Calculate hours
+                                        hours = duration
+                                        
+                                        # Update entry
+                                        attendance_day[uid]["sign_out_time"] = now.isoformat()
+                                        attendance_day[uid]["hours"] = round(hours, 2)
+                                        attendance_day[uid]["signed_in"] = False
+                                        updates_made = True
+                        
+                        if updates_made:
+                            doc_ref.set(attendance_day)
+                            print("Auto sign-out updates saved")
+                            
+            except Exception as e:
+                print(f"Error in auto sign-out loop: {e}")
+            
+            time.sleep(60)  # Check every minute
+
+    auto_sign_out_thread = threading.Thread(target=auto_sign_out_loop, daemon=True)
+    auto_sign_out_thread.start()
     # Optionally start periodic remote sync if REMOTE_SYNC_INTERVAL_MIN is set
     # (Removed in favor of direct Firebase integration)
     # For local/public exposure, prefer Cloudflare Tunnel (cloudflared).
