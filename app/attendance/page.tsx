@@ -255,6 +255,13 @@ export default function AttendancePage() {
                   }));
                 }
               }} className="px-3 py-2 bg-blue-500 text-white rounded">Manual Sign In</button>
+              <button onClick={() => {
+                const name = prompt("Enter member name:");
+                if (name) {
+                  const uid = `manual-${Date.now()}`;
+                  checkAuth(() => addManual(uid, name));
+                }
+              }} className="px-3 py-2 bg-green-500 text-white rounded">Add Member (No ID)</button>
             </div>
           </div>
 
