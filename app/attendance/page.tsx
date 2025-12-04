@@ -196,6 +196,68 @@ export default function AttendancePage() {
     await updateAttendance(selectedDate, uid, newEntry);
   };
 
+  const handleSignOutAll = async () => {
+    if (!selectedDate) return;
+
+    const signedInUsers = entries.filter(e => e.signedIn);
+    if (signedInUsers.length === 0) {
+      alert("No users are currently signed in.");
+      return;
+    }
+
+    if (!confirm(`Are you sure you want to sign out ${signedInUsers.length} users? This will cap their hours at 2 hours.`)) {
+      return;
+    }
+
+    try {
+      const dateRef = doc(db, "attendance", selectedDate);
+      const dateDoc = await getDoc(dateRef);
+      const currentData = dateDoc.exists() ? dateDoc.data() : {};
+
+      const updates: Record<string, any> = {};
+      const now = new Date();
+
+      for (const user of signedInUsers) {
+        const entry = currentData[user.uid] || {};
+        const signInTimeStr = entry.sign_in_time;
+
+        let hours = 2; // Default to 2 if no sign in time (shouldn't happen)
+
+        if (signInTimeStr) {
+          const signInTime = new Date(signInTimeStr);
+          const diffHours = (now.getTime() - signInTime.getTime()) / 3600000;
+          hours = Math.min(diffHours, 2);
+        }
+
+        updates[user.uid] = {
+          ...entry,
+          signed_in: false,
+          sign_out_time: now.toISOString(),
+          hours: hours
+        };
+      }
+
+      await setDoc(dateRef, {
+        ...currentData,
+        ...updates
+      });
+
+      // Update local state
+      setAttendanceMap(prev => ({
+        ...prev,
+        [selectedDate]: {
+          ...prev[selectedDate],
+          ...updates
+        } as any
+      }));
+
+      alert(`Successfully signed out ${signedInUsers.length} users.`);
+    } catch (error) {
+      console.error("Error signing out all:", error);
+      alert("Failed to sign out users.");
+    }
+  };
+
   return (
     <main className="min-h-screen bg-gradient-to-br from-gray-50 to-gray-100 dark:from-gray-900 dark:to-gray-800 p-4 md:p-8">
       <div className="max-w-6xl mx-auto">
@@ -218,6 +280,12 @@ export default function AttendancePage() {
             </select>
 
             <button onClick={fetchData} className="ml-auto px-3 py-2 bg-gray-200 dark:bg-gray-700 rounded">Reload</button>
+            <button
+              onClick={() => checkAuth(handleSignOutAll)}
+              className="ml-2 px-3 py-2 bg-red-500 hover:bg-red-600 text-white rounded transition-colors"
+            >
+              Sign Out All (Max 2h)
+            </button>
           </div>
         </div>
 
